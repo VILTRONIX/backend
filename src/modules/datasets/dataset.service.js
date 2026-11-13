@@ -14,6 +14,10 @@ const publicSpatial = (coverage) => ({
   ...pick(coverage, ['status', 'description', 'nativeExtent', 'outputCrs', 'verifiedAt']),
   areas: (coverage?.areas ?? []).map(publicAreaClaim),
 });
+const publicProcessedSummaries = (dataset) => dataset.processedSummaryAvailability ? pick(dataset.processedSummaryAvailability, [
+  'status', 'aoiKey', 'studyAreaId', 'spatialScope', 'countyMaskApplied', 'exactCountyStatistics', 'countyCoverageStatus',
+  'studyAreaRelationship', 'resolutions', 'recordCount16day', 'recordCountMonthly', 'assetIds', 'rawProductVerifiedByThisImport',
+]) : undefined;
 
 export function publicDataset(dataset) {
   return {
@@ -34,6 +38,7 @@ export function publicDataset(dataset) {
     validation: pick(dataset.validation, ['status', 'description', 'checkedAt']),
     processing: pick(dataset.processing, ['status', 'description', 'checkedAt']),
     readiness: getReadiness(dataset),
+    ...(dataset.processedSummaryAvailability ? { processedSummaryAvailability: publicProcessedSummaries(dataset) } : {}),
   };
 }
 
@@ -66,6 +71,7 @@ export function areaAvailability(dataset, area) {
       analysisReady: status === 'available',
     },
     limitations: dataset.limitations ?? [],
+    ...(dataset.processedSummaryAvailability && String(dataset.processedSummaryAvailability.studyAreaId) === String(area._id) ? { processedSummaryAvailability: publicProcessedSummaries(dataset) } : {}),
   };
 }
 
@@ -118,6 +124,7 @@ export function createDatasetService({ database, datasetModel, assetModel, study
         return {
           dataset: pick(dataset, ['_id', 'slug', 'name']), temporalCoverage: publicTemporal(dataset.temporalCoverage),
           spatialCoverage: publicSpatial(dataset.spatialCoverage), readiness: getReadiness(dataset),
+          ...(dataset.processedSummaryAvailability ? { processedSummaryAvailability: publicProcessedSummaries(dataset) } : {}),
           limitations: dataset.limitations ?? [],
           warning: 'Reported dataset dates or global product extent do not establish verified study-area coverage or usable files.',
         };

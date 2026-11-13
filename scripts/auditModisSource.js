@@ -92,7 +92,7 @@ const histogram = (values) => {
 };
 const close = (actual, expected) => actual === expected || (typeof actual === 'number' && typeof expected === 'number' && Math.abs(actual - expected) <= TOLERANCE);
 
-export function auditCsv(text, resolution) {
+export function auditCsv(text, resolution, { allowMeasurementNaN = false } = {}) {
   const { headers, rows } = parseCsv(text);
   const dateField = resolution === 'monthly' ? 'month' : 'date';
   const required = resolution === 'monthly'
@@ -111,7 +111,7 @@ export function auditCsv(text, resolution) {
     const record = {};
     for (const [columnIndex, column] of headers.entries()) {
       const raw = values[columnIndex];
-      if (raw.trim() === '') { byName[column].nullCount += 1; record[column] = null; continue; }
+      if (raw.trim() === '' || (allowMeasurementNaN && MEASUREMENTS.includes(column) && /^nan$/i.test(raw.trim()))) { byName[column].nullCount += 1; record[column] = null; continue; }
       if (column === dateField) {
         record[column] = raw;
         if (!isDateKey(raw, resolution)) { byName[column].invalidCount += 1; error(recordNumber, column, 'Invalid calendar date/month.'); }
@@ -218,7 +218,7 @@ export function weightedMean(records, prefix) {
   return weight ? valid.reduce((sum, record) => sum + record[`${prefix}_mean`] * record[`${prefix}_valid_pixel_count`], 0) / weight : null;
 }
 
-export function reconcileFiles(composite, monthly) {
+export function reconcileFiles(composite, monthly, { verifyPooledStd = true } = {}) {
   const groups = new Map();
   for (const record of composite.records) {
     if (!isDateKey(record.date ?? '', '16day')) continue;
@@ -241,11 +241,13 @@ export function reconcileFiles(composite, monthly) {
       const expected = weightedMean(records, prefix);
       compare(`${prefix}_mean`, expected);
       check.meanDifferences[prefix] = expected === null || row[`${prefix}_mean`] === null ? null : Math.abs(expected - row[`${prefix}_mean`]);
-      const available = records.filter((record) => record[`${prefix}_valid_pixel_count`] > 0 && record[`${prefix}_mean`] !== null && record[`${prefix}_std`] !== null);
-      const weight = available.reduce((sum, record) => sum + record[`${prefix}_valid_pixel_count`], 0);
-      const pooledStd = weight && expected !== null ? Math.sqrt(available.reduce((sum, record) => sum + record[`${prefix}_valid_pixel_count`] * (record[`${prefix}_std`] ** 2 + (record[`${prefix}_mean`] - expected) ** 2), 0) / weight) : null;
-      compare(`${prefix}_std`, pooledStd);
-      check.pooledStdDifferences[prefix] = pooledStd === null || row[`${prefix}_std`] === null ? null : Math.abs(pooledStd - row[`${prefix}_std`]);
+      if (verifyPooledStd) {
+        const available = records.filter((record) => record[`${prefix}_valid_pixel_count`] > 0 && record[`${prefix}_mean`] !== null && record[`${prefix}_std`] !== null);
+        const weight = available.reduce((sum, record) => sum + record[`${prefix}_valid_pixel_count`], 0);
+        const pooledStd = weight && expected !== null ? Math.sqrt(available.reduce((sum, record) => sum + record[`${prefix}_valid_pixel_count`] * (record[`${prefix}_std`] ** 2 + (record[`${prefix}_mean`] - expected) ** 2), 0) / weight) : null;
+        compare(`${prefix}_std`, pooledStd);
+        check.pooledStdDifferences[prefix] = pooledStd === null || row[`${prefix}_std`] === null ? null : Math.abs(pooledStd - row[`${prefix}_std`]);
+      }
     }
     checks.push(check);
   }
@@ -282,7 +284,7 @@ export function reconcileFiles(composite, monthly) {
   };
 }
 
-async function readSource(dataRoot, resolution) {
+async function readSource(dataRoot, resolution, options) {
   const file = path.join(dataRoot, SOURCES[resolution]);
   try {
     await access(file, constants.R_OK);
@@ -291,15 +293,15 @@ async function readSource(dataRoot, resolution) {
     if (details.size > 20 * 1024 * 1024) throw new Error('Summary CSV exceeds the audit limit of 20 MiB.');
     const bytes = await readFile(file);
     const text = bytes.toString('utf8');
-    return { path: file, sizeBytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), modifiedAt: details.mtime.toISOString(), rawPreview: text.split(/\r\n|\r|\n/).slice(0, 4).join('\n'), audit: auditCsv(text, resolution) };
+    return { path: file, sizeBytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), modifiedAt: details.mtime.toISOString(), rawPreview: text.split(/\r\n|\r|\n/).slice(0, 4).join('\n'), audit: auditCsv(text, resolution, options) };
   } catch (error) { throw new Error(`Cannot audit ${file}: ${error.message}`); }
 }
 
-export async function auditSources(dataRoot = process.env.TERRAPULSE_DATA_ROOT) {
+export async function auditSources(dataRoot = process.env.TERRAPULSE_DATA_ROOT, options = {}) {
   if (!dataRoot) throw new Error('TERRAPULSE_DATA_ROOT is unavailable. Set it explicitly; no alternative path will be guessed.');
   if (!path.isAbsolute(dataRoot)) throw new Error('TERRAPULSE_DATA_ROOT must be an absolute directory path.');
-  const [composite, monthly] = await Promise.all([readSource(dataRoot, '16day'), readSource(dataRoot, 'monthly')]);
-  const reconciliation = reconcileFiles(composite.audit, monthly.audit);
+  const [composite, monthly] = await Promise.all([readSource(dataRoot, '16day', options), readSource(dataRoot, 'monthly', options)]);
+  const reconciliation = reconcileFiles(composite.audit, monthly.audit, options);
   const integrityErrors = [];
   if (!reconciliation.expectedMissingObservationsMatch) integrityErrors.push('The source does not match the reported 18 zero-quality-valid observations.');
   if (!reconciliation.expectedMissingMonthsMatch) integrityErrors.push('The no-data months do not match the reported February 2019 and January 2021.');

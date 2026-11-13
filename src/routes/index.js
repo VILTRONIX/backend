@@ -3,8 +3,10 @@ import { createStudyAreaService } from '../modules/study-areas/study-area.servic
 import { createStudyAreaRouter } from '../modules/study-areas/study-area.routes.js';
 import { createDatasetService } from '../modules/datasets/dataset.service.js';
 import { createDatasetRouter } from '../modules/datasets/dataset.routes.js';
+import { createVegetationRouter } from '../modules/vegetation/vegetation.routes.js';
+import { createVegetationService } from '../modules/vegetation/vegetation.service.js';
 
-export function createApiRouter({ config, database, studyAreaService, datasetService }) {
+export function createApiRouter({ config, database, studyAreaService, datasetService, vegetationService }) {
   const router = Router();
 
   router.get('/meta', (req, res) => {
@@ -24,5 +26,6 @@ export function createApiRouter({ config, database, studyAreaService, datasetSer
 
   router.use(createStudyAreaRouter(studyAreaService ?? createStudyAreaService({ database })));
   router.use(createDatasetRouter(datasetService ?? createDatasetService({ database })));
+  router.use(createVegetationRouter(vegetationService ?? createVegetationService({ database })));
   return router;
 }

@@ -31,6 +31,7 @@ test('Atlas: dataset indexes, reported inventory, APIs, readiness filters, and u
   assert.equal(datasets.length, 8);
   assert.equal(new Set(datasets.map((entry) => entry.slug)).size, 8);
   assert.ok(datasets.every((entry) => !getReadiness(entry).ready), 'Current project reports must not be marked ready.');
+  const summariesImported = datasets.find((entry) => entry.slug === 'nasa-modis-mod13q1-061').processedSummaryAvailability?.status === 'available';
 
   for (const Model of [Dataset, Asset]) {
     const indexes = await Model.listIndexes();
@@ -58,7 +59,8 @@ test('Atlas: dataset indexes, reported inventory, APIs, readiness filters, and u
   for (const [query, expected] of [
     ['provider=NASA', 4], ['provider=USDA', 3], ['provider=USGS', 1], ['category=climate', 2],
     ['acquisitionStatus=request_completed', 1], ['acquisitionStatus=reported_available', 2],
-    ['validationStatus=pending', 8], ['processingStatus=not_started', 8],
+    ['validationStatus=pending', summariesImported ? 7 : 8], ['processingStatus=not_started', summariesImported ? 7 : 8],
+    ['validationStatus=validated', summariesImported ? 1 : 0], ['processingStatus=completed', summariesImported ? 1 : 0],
     ['readiness=ready', 0], ['readiness=not_ready', 8], ['readiness=failed', 0],
     ['search=MERRA', 1], ['search=%2E%2A', 0], ['isActive=false', 0],
   ]) assert.equal((await get(`/api/v1/datasets?${query}`)).pagination.total, expected, query);
@@ -66,7 +68,15 @@ test('Atlas: dataset indexes, reported inventory, APIs, readiness filters, and u
   assert.equal(modis.acquisition.status, 'request_completed');
   assert.equal(modis.acquisition.reportedInventory.size.value, 252.81);
   assert.equal(modis.acquisition.reportedInventory.size.unit, 'MB');
-  assert.equal(modis.validation.status, 'pending');
+  assert.equal(modis.validation.status, summariesImported ? 'validated' : 'pending');
+  assert.equal(modis.processing.status, summariesImported ? 'completed' : 'not_started');
+  if (summariesImported) {
+    assert.equal(modis.processedSummaryAvailability.countyMaskApplied, false);
+    assert.equal(modis.processedSummaryAvailability.exactCountyStatistics, false);
+    assert.equal(modis.processedSummaryAvailability.countyCoverageStatus, 'unverified');
+    assert.equal(modis.processedSummaryAvailability.recordCount16day, 207);
+    assert.equal(modis.processedSummaryAvailability.recordCountMonthly, 108);
+  }
   const power = await get('/api/v1/datasets/nasa-power-daily/coverage');
   assert.equal(power.temporalCoverage.timezone, 'UTC');
   assert.equal(power.temporalCoverage.status, 'reported');
@@ -76,8 +86,10 @@ test('Atlas: dataset indexes, reported inventory, APIs, readiness filters, and u
   assert.equal(merra.variables.find((variable) => variable.name === 'TSH').availabilityStatus, 'reported_absent');
   for (const { slug } of DATASET_INVENTORY) {
     const result = await get(`/api/v1/datasets/${slug}/assets`);
-    assert.equal(result.pagination.total, 0, 'No real source assets were discovered by this sprint.');
-    assert.deepEqual(result.items, []);
+    const expected = summariesImported && slug === 'nasa-modis-mod13q1-061' ? 2 : 0;
+    assert.equal(result.pagination.total, expected, 'Only the two approved processed MODIS CSVs may be registered.');
+    if (expected) assert.ok(result.items.every((asset) => asset.assetType === 'processed' && asset.format === 'CSV'));
+    else assert.deepEqual(result.items, []);
   }
   const coverage = await get(`/api/v1/study-areas/${county._id}/coverage`);
   assert.equal(coverage.items.length, 8);

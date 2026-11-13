@@ -7,3 +7,9 @@ npm-debug.log*
 coverage/
 .DS_Store
 Thumbs.db
+# Processed observations stay in private external storage, never in Git.
+*.csv
+*.nc
+*.nc4
+*.tif
+*.tiff

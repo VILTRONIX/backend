@@ -2,9 +2,9 @@
 
 TerraPulse is a NASA Space Apps Challenge 2026 project for comparing crop rotation strategies in **Story County, Iowa, USA**. Its intended users are farmers and agricultural advisors.
 
-This repository contains the backend foundation, Study Areas, and the Dataset Registry: health checks, service metadata, MongoDB connection management, official boundaries, geometry validation, and read-only source inventory/availability APIs. It contains no frontend and uses the repository root.
+This repository contains the backend foundation, Study Areas, Dataset Registry, and MODIS vegetation summaries: health checks, service metadata, MongoDB connection management, official boundaries, geometry validation, source inventory/availability APIs, and read-only vegetation APIs. It contains no frontend and uses the repository root.
 
-The checked-in official Story County boundary comes from Census TIGER/Line 2026. The study-area seed validates and stores this boundary in MongoDB. Eight NASA/USDA/USGS source registry entries are available, based on the project's reported inventory. **Registration is not ingestion: no satellite, climate, crop, or soil source files have been discovered, validated, or processed by the registry sprint. No agricultural scores, crop results, or scientific formulas are implemented.**
+The checked-in official Story County boundary comes from Census TIGER/Line 2026. The study-area seed validates and stores this boundary in MongoDB. Eight NASA/USDA/USGS source registry entries are available. Sprint 4 imported 315 existing processed MODIS bounding-box AOI summaries and registered their two CSV assets. These are not exact county statistics; the raw NetCDF product has not been locally verified. Other sources remain registry entries. No agricultural scores, crop results, or scientific formulas are implemented.
 
 ## Stack and prerequisites
 
@@ -38,6 +38,13 @@ src/
       dataset.controller.js
       dataset.service.js
       dataset.validation.js
+    vegetation/
+      vegetation.constants.js
+      vegetation-observation.model.js
+      vegetation.validation.js
+      vegetation.service.js
+      vegetation.routes.js
+      modis-import.service.js
   middleware/
     requestId.js
     notFound.js
@@ -54,10 +61,15 @@ tests/
   server.test.js
   study-area.*.test.js
   dataset.*.test.js
+  vegetation.*.test.js
 integration/study-areas.check.js  # Explicit Atlas checks, outside default discovery
 integration/datasets.check.js
+integration/modis.check.js
 scripts/seedStudyAreas.js
 scripts/seedDatasets.js
+scripts/auditModisSource.js
+scripts/ingestModis.js
+reports/modis_ingestion_report.md
 data/seed/
   datasets.js                    # Project-reported source inventory, not observations
   story-county.geojson
@@ -417,7 +429,7 @@ Unknown/operator-like/repeated parameters and invalid values are rejected. `GET 
 
 `analysisReady` expresses registered lifecycle completion plus verified spatial coverage; it is not a scientific quality score or a claim of full temporal coverage. Consumers must inspect the separate area-specific temporal status/bounds for their requested period. There is no requested-date intersection API in this sprint.
 
-Example excerpt from MODIS details (no observations or file assets implied):
+Example excerpt from MODIS details after the approved summary import:
 
 ```json
 {
@@ -425,13 +437,13 @@ Example excerpt from MODIS details (no observations or file assets implied):
   "data": {
     "slug": "nasa-modis-mod13q1-061",
     "acquisition": { "status": "request_completed" },
-    "validation": { "status": "pending" },
-    "processing": { "status": "not_started" },
+    "validation": { "status": "validated" },
+    "processing": { "status": "completed" },
     "readiness": {
       "status": "not_ready",
       "ready": false,
       "scope": "dataset_lifecycle_only",
-      "blockers": ["acquisition_not_downloaded", "validation_not_validated", "processing_not_completed"]
+      "blockers": ["acquisition_not_downloaded"]
     }
   },
   "requestId": "<UUID>"
@@ -498,7 +510,69 @@ Audit results on November 13, 2026:
 
 Verification: **117 default tests passed** (the existing 102 regressions plus 15 audit tests); both existing read-only Atlas integration checks passed (Study Areas and Dataset Registry). New tests exercise quoted CSV/JSON fields, dates, numeric/null handling, QA summaries, duplicate detection, calendar gaps, weighted reconciliation, schema drift, missing input, checksum/read-only behavior, and truthful failure reporting. Synthetic test fixtures are confined to temporary test files and are never treated as real NASA data or imported.
 
-The source audit is complete. **Database import remains blocked pending separate user approval.** Import design must preserve the AOI spatial limitation; audit success does not establish exact county coverage or promote dataset readiness. The old county-masked expected filenames/report are not prerequisites or evidence for this AOI audit.
+The paragraph above records the historical read-only phase. The user subsequently approved ingestion after a complete dry-run. The approved import is now complete, as documented below; exact county coverage and overall dataset readiness remain unverified/incomplete. The old county-masked expected filenames/report are not prerequisites or evidence for this AOI import.
+
+## MODIS ingestion and vegetation APIs (Sprint 4)
+
+The [ingestion report](reports/modis_ingestion_report.md) contains actual first/second import results, asset IDs, complete source mapping, SHA-256 checksums, preservation hashes, and directly verified Atlas indexes. No dependencies were added. The importer consumes only the two approved CSVs beneath `process.env.TERRAPULSE_DATA_ROOT`; application code contains no absolute data-root path. It never fetches or registers the unavailable raw NetCDF product.
+
+```powershell
+$env:TERRAPULSE_DATA_ROOT = 'C:\TerraPulseData'
+npm run ingest:modis:dry-run
+npm run ingest:modis
+
+# Direct invocation defaults to a non-writing dry-run.
+node scripts/ingestModis.js
+
+# Read-only live verification, after the approved import:
+npm run test:modis:integration
+```
+
+Keep `MONGODB_URI` in the existing private environment configuration. The data root must be absolute; absent roots or missing files fail without searching another machine. Source CSVs remain external and read-only, and CSV/NetCDF/raster files are excluded from Git. Checksums and sizes are pinned to this approved delivery: changed files require review and an explicit manifest update, rather than silent replacement. Changing an existing asset's private storage path also produces a conflict for review.
+
+Both commands validate byte sizes, SHA-256, exact ordered schemas, every source row, dates/months, duplicates, counts, finite numeric values, nulls, pixel counts/percentages, QA histograms, and cross-file monthly weighted means. Both check the existing Dataset, pilot StudyArea, index compatibility, and existing stored values. A dry-run creates no collections, indexes, assets, observations, or lifecycle updates. It requires database access to pass the full conflict check; successful source validation alone does not authorize committing.
+
+Commit repeats the read-only preflight, explicitly creates required indexes, and uses a MongoDB transaction with majority writes. Atlas/replica-set transaction support is required; there is no partial-write fallback. Immutable `$setOnInsert` upserts and the unique compound key prevent duplication. Conflicting values stop the import without overwriting them. Full transactional and post-commit read-back comparisons verify all source values and provenance. Source bytes are rechecked before writing and before transaction completion. Index/collection setup occurs outside the transaction, so empty infrastructure can remain after a failed transaction; observations, assets, and lifecycle changes commit together.
+
+Stored collections are `vegetation_observations`, existing `dataset_assets`, and existing `datasets`. One observation collection distinguishes `resolution=16day|monthly`. The stable `aoiKey=modis-summary-aoi-v1` identifies this source pair without inventing its footprint. Every observation records source asset/checksum, unchanged decoded values, QA objects where supplied, original period key, explicit spatial flags, processing provenance, and its initial import time. Monthly `month`/`periodKey` preserve `YYYY-MM`; `observationDate` uses the first day at UTC midnight as a storage convention, not an observed timezone claim.
+
+The first import inserted **207 composites + 108 monthly rows + 2 processed CSV assets**. Re-import inserted **0 observations and 0 assets**, changed no lifecycle fields, and preserved complete stored document hashes including timestamps. Actual indexes are:
+
+| Collection | Name | Keys | Unique |
+| --- | --- | --- | --- |
+| vegetation_observations | vegetation_source_period_unique | datasetId, aoiKey, resolution, periodKey | Yes |
+| vegetation_observations | vegetation_area_resolution_date | studyAreaId, resolution, observationDate | No |
+| vegetation_observations | vegetation_geoid_resolution_period | areaGeoid, resolution, periodKey | No |
+| dataset_assets | dataset_asset_key_unique | assetKey | Yes |
+| dataset_assets | dataset_asset_dataset_type | datasetId, assetType, _id | No |
+
+All keys are ascending and both collections retain MongoDB's `_id_` identity index. MODIS validation is now `validated` and processing `completed`, scoped explicitly to these processed summaries. Acquisition stays `request_completed`, overall readiness stays `not_ready`, and the registry's existing county coverage stays `unknown`. `processedSummaryAvailability` separately reports the available bounding-box summaries and `countyCoverageStatus=unverified`; it appears in dataset details/coverage and matching pilot-context coverage responses.
+
+All three GET endpoints use `{ success, data, requestId }`:
+
+| Endpoint | Behavior |
+| --- | --- |
+| `/api/v1/observations/vegetation` | Sorted, bounded listing with `data.items`, pagination, and metadata. |
+| `/api/v1/observations/vegetation/summary` | Summary for an explicitly required resolution; statistics in `data.statistics`. |
+| `/api/v1/observations/vegetation/:date` | Exact period lookup; `data.observation` and metadata. |
+
+Listing and lookup default to `resolution=16day`. All routes accept `areaId` (24 hex characters), `geoid` (5 digits), and `resolution=16day|monthly`. Listing/summary accept inclusive `startDate` and `endDate`: valid `YYYY-MM-DD` for composites, `YYYY-MM` for monthly data. Listing accepts `page=1..10000` (default 1) and `limit=1..100` (default 20). Area filters refer only to pilot project context, never spatial containment; valid nonmatching filters yield an empty list/summary or lookup 404. Unknown/repeated parameters, invalid formats, mixed date granularity, and reversed ranges return 400. Missing lookup periods return 404 and database outages 503.
+
+```powershell
+$base = 'http://localhost:5000/api/v1/observations/vegetation'
+Invoke-RestMethod "${base}?geoid=19169&limit=100"
+Invoke-RestMethod "${base}?resolution=monthly&startDate=2019-01&endDate=2019-12"
+Invoke-RestMethod "${base}/summary?resolution=16day"
+Invoke-RestMethod "${base}/2019-02?resolution=monthly"
+```
+
+Summary `averagePeriodMean`, `minimumPeriodMean`, and `maximumPeriodMean` are **unweighted statistics across available period means**, not raw pixel extrema or a newly pooled monthly estimate. Monthly source means remain their original upstream pooled-pixel values. Nulls are ignored; all-null/empty selections return null statistics, never zero averages. Valid observation count requires both indices; per-index valid period counts are separate. `missingPeriods` identifies existing selected rows with missing measurements, not a fabricated calendar. Pixel coverage totals count repeated pixel-observations, not unique pixels or county area. Pagination totals and items are separate reads and may briefly differ during administrative changes.
+
+All six measurements remain null in 18 composites and in February 2019/January 2021; zero counts/percentages remain zero. Literal CSV NaN/empty measurements are normalized to null, while other invalid numeric values fail validation. There is no interpolation, rescaling, monthly median/std recalculation, or new QA filtering. The upstream Pixel Reliability = 0 and MODLAND QA = 0 rules are recorded as supplied provenance, not independently verified raw QA.
+
+Every vegetation response discloses NASA MOD13Q1.061, native 250 m resolution, selected temporal resolution, area-summary data level, missing-data limitations, and `spatialScope=bounding_box_aoi`, `countyMaskApplied=false`, `exactCountyStatistics=false`, `countyCoverageStatus=unverified`, `studyAreaRelationship=pilot_context_only`. No AOI polygon or exact CRS is inferred; these data cannot render pixel-level raster maps. Public DTOs omit private storage URIs, internal evidence references, private asset metadata, and internal content hashes.
+
+Verification on November 13, 2026: **131 default tests passed**, preserving the earlier 117 tests; **all three opt-in Atlas checks passed** (Study Areas, Dataset Registry, MODIS). Live checks read back and compare all 315 source rows, verify actual unique indexes, exercise real HTTP filtering/pagination/date/summary/error responses, check null-only summaries, and verify unchanged collection hashes. Integration checks are read-only; the two explicitly executed real imports establish idempotency without synthetic data in Atlas. There is no authentication or public write/import endpoint in this sprint.
 
 ## Tests
 
@@ -553,4 +627,4 @@ The audit fixed an incomplete seed-success check: it previously compared only co
 
 No robust topology validation library is installed in the backend's dependency tree; none was added during the audit. Validation remains structural, MongoDB's acceptance of the county/index is not a full topological certificate, and full containment is not implemented in the public API. Self-intersections, hole relationships, overlap, winding, and global/hemisphere edge cases remain limitations. Boundary-only contact follows MongoDB semantics and is not equivalent to the boundary-crossing fixture above. **Final module status: PASS within the implemented Study Areas scope.**
 
-This sprint includes no authentication, public geometry persistence, update/delete routes, satellite/climate/crop/soil ingestion, or rotation/scoring endpoints. Complete topological validation and full-containment analysis remain future work.
+The Study Areas scope above includes no public geometry persistence, update/delete routes, complete topological validation, or full-containment analysis. MODIS processed-summary ingestion is documented separately above. Authentication, other source ingestion, and rotation/scoring endpoints remain future work.

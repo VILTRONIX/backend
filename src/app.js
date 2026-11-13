@@ -12,7 +12,7 @@ morgan.token('request-id', (req) => req.id);
 // Log registered route patterns only; raw paths and query strings may contain secrets.
 morgan.token('route', (req) => req.route?.path ?? '[unmatched]');
 
-export function createApp({ config, database, logger = console, studyAreaService, datasetService }) {
+export function createApp({ config, database, logger = console, studyAreaService, datasetService, vegetationService }) {
   const app = express();
   app.disable('x-powered-by');
   app.set('etag', false);
@@ -42,7 +42,7 @@ export function createApp({ config, database, logger = console, studyAreaService
     });
   });
   app.use('/health', createHealthRouter({ database }));
-  app.use('/api/v1', createApiRouter({ config, database, studyAreaService, datasetService }));
+  app.use('/api/v1', createApiRouter({ config, database, studyAreaService, datasetService, vegetationService }));
   app.use(notFound);
   app.use(createErrorHandler({ logger }));
 
