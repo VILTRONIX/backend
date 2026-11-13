@@ -1,0 +1,31 @@
+{
+  "name": "terrapulse-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TerraPulse agricultural decision-support API foundation",
+  "type": "module",
+  "engines": {
+    "node": ">=22.17.1"
+  },
+  "scripts": {
+    "dev": "nodemon --watch src src/server.js",
+    "start": "node src/server.js",
+    "test": "node --test",
+    "audit": "node scripts/auditModisSource.js",
+    "test:integration": "node --test integration/study-areas.check.js",
+    "seed:study-areas": "node scripts/seedStudyAreas.js",
+    "seed:datasets": "node scripts/seedDatasets.js",
+    "test:datasets:integration": "node --test integration/datasets.check.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.10",
+    "express": "^5.3.0",
+    "helmet": "^8.3.0",
+    "mongoose": "^9.12.1",
+    "morgan": "^1.12.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
