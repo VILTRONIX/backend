@@ -5,6 +5,9 @@ import { ENGINE_DATASETS } from './engine.registry.js';
 export function createEngineRouter(service) {
   const router = Router();
   router.use((req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
+  router.get('/climate/daily', async (req, res) => {
+    res.json({ success: true, data: await service.readDaily(req.query), requestId: req.id });
+  });
   const noQuery = (query) => {
     if (Object.keys(query).length) throw new AppError(400, 'INVALID_ENGINE_QUERY', 'This Engine metadata endpoint does not accept query parameters.');
   };

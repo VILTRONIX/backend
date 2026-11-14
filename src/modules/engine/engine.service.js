@@ -12,6 +12,7 @@ import { adaptContractV1, verifyFinalSchema } from './engine.contract-v1.js';
 import { createFinalIntegrity } from './engine.integrity.js';
 import { parseFinalQuery, createFinalFilter, FINAL_FILTERS } from './engine.contract-query.js';
 import { createSnapshotCache } from './engine.snapshot-cache.js';
+import { DAILY_ID, parseDailyQuery, loadPowerDaily } from './engine.power-daily.js';
 
 const issueOf = (error) => error instanceof EngineIssue ? error : new EngineIssue('validation_failed', 'source_unreadable');
 function definitionFor(id) {
@@ -44,6 +45,7 @@ export function createEngineService({ engineRoot, featuresRoot, schemasRoot, man
   const snapshots = createSnapshotCache(cacheOptions), cacheEnabled = snapshots.limits.enabled;
   const counters = { manifestReads: 0, schemaValidations: 0, recordValidations: 0, datasetValidations: 0 };
   let manifestSnapshot, manifestFlight;
+  const dailyToken = {};
   const isCurrentManifest = (discovery) => manifestSnapshot === discovery;
   for (const [key, value] of Object.entries(limits)) {
     if (!Object.hasOwn(DEFAULT_LIMITS, key) || !Number.isSafeInteger(value) || value < 1) throw new Error('Invalid Engine loader limits.');
@@ -196,6 +198,25 @@ export function createEngineService({ engineRoot, featuresRoot, schemasRoot, man
   }
 
   const service = {
+    async readDaily(query = {}) {
+      const parsed = parseDailyQuery(query);
+      try {
+        const value = cacheEnabled ? await snapshots.get(DAILY_ID, dailyToken, () => loadPowerDaily(paths, limits)) : await loadPowerDaily(paths, limits);
+        const dataset = deserialize(value.metadata), items = []; let total = 0;
+        for (const record of deserialize(value.records)) {
+          if (parsed.startDate && record.date < parsed.startDate || parsed.endDate && record.date > parsed.endDate) continue;
+          total += 1;
+          if (total > (parsed.page - 1) * parsed.limit && items.length < parsed.limit) items.push(record);
+        }
+        return { dataset, items, pagination: { page: parsed.page, limit: parsed.limit, total, totalPages: Math.ceil(total / parsed.limit) } };
+      } catch (error) {
+        if (error instanceof AppError) throw error;
+        const issue = issueOf(error);
+        throw new AppError(503, 'ENGINE_DATASET_UNAVAILABLE', 'Optional daily POWER dataset is unavailable.', {
+          datasetId: DAILY_ID, optional: true, status: issue.status, reason: issue.reason,
+        });
+      }
+    },
     async listDatasets() {
       const discovery = await discover();
       const items = [];
