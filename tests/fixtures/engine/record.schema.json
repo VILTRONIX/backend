@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SYNTHETIC TEST DATA ONLY",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sample_key", "sample_period", "sample_year", "sample_map_unit", "sample_value"],
+  "properties": {
+    "sample_key": { "type": "string", "minLength": 1 },
+    "sample_period": { "type": "string", "minLength": 7, "maxLength": 7 },
+    "sample_year": { "type": "integer", "minimum": 1, "maximum": 9999 },
+    "sample_map_unit": { "type": "string", "minLength": 1 },
+    "sample_value": { "type": ["number", "null"], "minimum": 0, "maximum": 100 }
+  }
+}

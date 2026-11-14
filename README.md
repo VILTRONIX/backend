@@ -163,6 +163,7 @@ Default base URL: `http://localhost:5000`.
 | GET | `/` | API welcome message and version (200). |
 | GET | `/health/live` | Process is alive (200), independent of MongoDB. |
 | GET | `/health/ready` | Application/database ready (200), otherwise 503; includes connected database name. |
+| GET | `/health/engine` | Independent Engine readiness (200/503), seven mandatory datasets and optional MERRA-2; [contract](docs/engine_api_contract.md). |
 | GET | `/api/v1/meta` | Project, API version, pilot location, environment, and `ready`/`degraded` service status (200). |
 | GET | `/api/v1/study-areas` | Paginated active study areas, excluding geometry by default. |
 | GET | `/api/v1/study-areas/:id` | Active study area including geometry; missing records return 404. |

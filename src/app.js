@@ -7,12 +7,13 @@ import { notFound } from './middleware/notFound.js';
 import { createErrorHandler } from './middleware/errorHandler.js';
 import { createHealthRouter } from './modules/health/health.routes.js';
 import { createApiRouter } from './routes/index.js';
+import { createEngineService } from './modules/engine/engine.service.js';
 
 morgan.token('request-id', (req) => req.id);
 // Log registered route patterns only; raw paths and query strings may contain secrets.
 morgan.token('route', (req) => req.route?.path ?? '[unmatched]');
 
-export function createApp({ config, database, logger = console, studyAreaService, datasetService, vegetationService }) {
+export function createApp({ config, database, logger = console, studyAreaService, datasetService, vegetationService, engineService }) {
   const app = express();
   app.disable('x-powered-by');
   app.set('etag', false);
@@ -41,8 +42,9 @@ export function createApp({ config, database, logger = console, studyAreaService
       requestId: req.id,
     });
   });
-  app.use('/health', createHealthRouter({ database }));
-  app.use('/api/v1', createApiRouter({ config, database, studyAreaService, datasetService, vegetationService }));
+  const engine = engineService ?? createEngineService({ engineRoot: config.engineRoot, featuresRoot: config.featuresRoot, schemasRoot: config.schemasRoot });
+  app.use('/health', createHealthRouter({ database, engineService: engine }));
+  app.use('/api/v1', createApiRouter({ config, database, studyAreaService, datasetService, vegetationService, engineService: engine }));
   app.use(notFound);
   app.use(createErrorHandler({ logger }));
 

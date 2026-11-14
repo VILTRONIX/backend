@@ -5,6 +5,7 @@ node_modules/
 *.log
 npm-debug.log*
 coverage/
+tests/.tmp-engine/
 .DS_Store
 Thumbs.db
 # Processed observations stay in private external storage, never in Git.

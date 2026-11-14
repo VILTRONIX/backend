@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { parseEnv } from '../src/config/env.js';
+import { resolveEnginePaths } from '../src/config/features.js';
 
 test('development defaults permit an unconfigured database', () => {
   assert.deepEqual(parseEnv({}), {
     port: 5000,
     nodeEnv: 'development',
     mongodbUri: '',
+    ...resolveEnginePaths(),
     clientOrigins: ['http://localhost:5173'],
   });
 });

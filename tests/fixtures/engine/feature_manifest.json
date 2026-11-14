@@ -1,0 +1,22 @@
+{
+  "contractVersion": "terrapulse.features/1",
+  "datasets": [
+    {
+      "logicalId": "power_monthly",
+      "id": "synthetic-engine-output",
+      "files": [{ "id": "synthetic-part-1", "path": "samples.ndjson", "format": "ndjson", "schema": "record.schema.json" }],
+      "fieldMappings": {
+        "date": { "field": "sample_period", "granularity": "month" },
+        "year": "sample_year",
+        "mapUnit": "sample_map_unit"
+      },
+      "metadata": {
+        "source": "SYNTHETIC TEST DATA ONLY",
+        "observationPeriod": { "start": "2020-01", "end": "2021-01" },
+        "spatialScope": "Synthetic test scope; no real geography.",
+        "provenance": ["synthetic-fixture-v1"],
+        "limitations": ["Arbitrary test records; no agricultural interpretation or units."]
+      }
+    }
+  ]
+}

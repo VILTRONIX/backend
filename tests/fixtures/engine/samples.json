@@ -1,0 +1,6 @@
+[
+  {"sample_key":"synthetic-a","sample_period":"2020-01","sample_year":2020,"sample_map_unit":"synthetic-u1","sample_value":1},
+  {"sample_key":"synthetic-b","sample_period":"2020-02","sample_year":2020,"sample_map_unit":"synthetic-u2","sample_value":null},
+  {"sample_key":"synthetic-c","sample_period":"2020-03","sample_year":2020,"sample_map_unit":"synthetic-u1","sample_value":3},
+  {"sample_key":"synthetic-d","sample_period":"2021-01","sample_year":2021,"sample_map_unit":"synthetic-u3","sample_value":4}
+]

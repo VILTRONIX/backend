@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'node:url';
+import { resolveEnginePaths } from './features.js';
 
 export function parseEnv(environment) {
   const nodeEnv = environment.NODE_ENV ?? 'development';
@@ -42,11 +43,12 @@ export function parseEnv(environment) {
     port,
     nodeEnv,
     mongodbUri,
+    ...resolveEnginePaths(environment),
     clientOrigins: Object.freeze([...new Set(clientOrigins)]),
   });
 }
 
-export function loadEnv() {
+function loadEnvFile() {
   // Resolve from this module so startup does not depend on the shell's working directory.
   const result = dotenv.config({
     path: fileURLToPath(new URL('../../.env', import.meta.url)),
@@ -55,5 +57,14 @@ export function loadEnv() {
   if (result.error && result.error.code !== 'ENOENT') {
     throw new Error('Unable to read the .env configuration file.');
   }
+}
+
+export function loadEnginePaths() {
+  loadEnvFile();
+  return resolveEnginePaths(process.env);
+}
+
+export function loadEnv() {
+  loadEnvFile();
   return parseEnv(process.env);
 }
